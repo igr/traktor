@@ -1,8 +1,10 @@
-package traktor
+package example
 
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import java.util.concurrent.ConcurrentHashMap
+import traktor.TraktorId
+import traktor.spawnFleet
+import traktor.with
 import kotlin.random.Random
 
 suspend fun main(): Unit = coroutineScope {
@@ -10,7 +12,7 @@ suspend fun main(): Unit = coroutineScope {
 
 	repeat(1_000_000) {
 		val id = TraktorId(Random.nextInt(10).toString())
-		fleet.tell(id, Counter.Inc(1))
+		fleet tell (id with Counter.Inc(1))
 	}
 
 	delay(10_000)
