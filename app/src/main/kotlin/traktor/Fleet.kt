@@ -9,7 +9,9 @@ import kotlinx.coroutines.sync.Semaphore
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
-data class FleetMessage<M, F>(
+interface Mutable
+
+internal data class FleetMessage<M, F>(
 	val traktorMsg: TraktorMessage<M>?,
 	val faktorMsg: F?,
 )
@@ -35,7 +37,7 @@ class FleetRef<M, F> internal constructor(
  * It receives messages from the FleetRef and forwards them to the Traktors.
  * It also creates new Traktors when needed.
  */
-class Fleet<M, F, T : Traktor<M, *, T>>(
+internal class Fleet<M, F, T : Traktor<M, *, T>>(
 	private val scope: CoroutineScope,
 	private val context: CoroutineContext,
 	private val receiveChannel: Channel<FleetMessage<M, F>>,
@@ -51,8 +53,18 @@ class Fleet<M, F, T : Traktor<M, *, T>>(
 	private val locks = ConcurrentHashMap<TraktorId, Semaphore>()
 	private val fleetLock = Semaphore(1)
 
-	private fun runFaktor(msg: F) {
+	private suspend fun runFaktor(msg: F) {
+		if (msg is Mutable) {
+			// mutable fleet messages are locking the whole fleet
+			fleetLock.acquire()
+			fleet.clear()
+		}
+
 		faktor = faktor(msg) as Faktor<F, *>    // todo
+
+		if (msg is Mutable) {
+			fleetLock.release()
+		}
 	}
 
 	private suspend fun runTraktor(msg: TraktorMessage<M>) {

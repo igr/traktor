@@ -21,11 +21,15 @@ suspend fun main(): Unit = coroutineScope {
 	}
 
 	delay(10_000)
-	println("Database check: ${databaseCheck()}")
+
+	fleet tell Counters.Checksum
+
+	delay(100)
 
 	fleet tell Counters.ResetGreater
-	delay(1_000)
-	println("Database check: ${databaseCheck()}")
 
+	delay(1_000)
+
+	fleet tell Counters.Checksum
 
 }

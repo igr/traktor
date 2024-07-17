@@ -1,6 +1,7 @@
 package example
 
 import traktor.Faktor
+import traktor.Mutable
 import traktor.TraktorId
 
 // simulate a database
@@ -20,7 +21,8 @@ class Counters(
 	// messages
 ) : Faktor<Counters.Message, Counters> {
 	sealed interface Message
-	data object ResetGreater : Message
+	data object ResetGreater : Message, Mutable
+	data object Checksum : Message
 
 	override operator fun invoke(msg: Message): Counters {
 		return when (msg) {
@@ -28,6 +30,10 @@ class Counters(
 				database.entries
 					.filter { it.value > 50 }
 					.forEach { (id, _) -> database[id] = 0 }
+				this
+			}
+			is Checksum -> {
+				println("Database check: ${databaseCheck()}")
 				this
 			}
 		}
