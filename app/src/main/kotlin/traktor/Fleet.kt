@@ -9,20 +9,24 @@ import kotlinx.coroutines.sync.Semaphore
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
+data class FleetMessage<M, F>(
+	val traktorMsg: TraktorMessage<M>?,
+	val faktorMsg: F?,
+)
+
 /**
  * ❇️ Fleet reference for sending messages to the Fleet.
  */
 class FleetRef<M, F> internal constructor(
-	private val mailbox: Channel<TraktorMessage<M>>,
-	private val faktor: Channel<F>,
+	private val mailbox: Channel<FleetMessage<M, F>>
 ){
 
 	suspend infix fun tell(msg: TraktorMessage<M>) {
-		mailbox.send(msg)
+		mailbox.send(FleetMessage(msg, null))
 	}
 
 	suspend infix fun tell(msg: F) {
-		faktor.send(msg)
+		mailbox.send(FleetMessage(null, msg))
 	}
 }
 
@@ -34,8 +38,7 @@ class FleetRef<M, F> internal constructor(
 class Fleet<M, F, T : Traktor<M, *, T>>(
 	private val scope: CoroutineScope,
 	private val context: CoroutineContext,
-	private val faktorChannel: Channel<F>,
-	private val receiveChannel: Channel<TraktorMessage<M>>,
+	private val receiveChannel: Channel<FleetMessage<M, F>>,
 	newFaktor: () -> Faktor<F, *>,
 	private val newTraktor: (TraktorId) -> T,
 ) {
@@ -47,6 +50,10 @@ class Fleet<M, F, T : Traktor<M, *, T>>(
 	// locks for each currently RUNNING tractor
 	private val locks = ConcurrentHashMap<TraktorId, Semaphore>()
 	private val fleetLock = Semaphore(1)
+
+	private fun runFaktor(msg: F) {
+		faktor = faktor(msg) as Faktor<F, *>    // todo
+	}
 
 	private suspend fun runTraktor(msg: TraktorMessage<M>) {
 		val id = msg.id
@@ -73,11 +80,20 @@ class Fleet<M, F, T : Traktor<M, *, T>>(
 	 * This is where Fleet starts processing messages.
 	 */
 	suspend fun run() {
-		runFaktorLoop()
 		while (true) {
 			val msg = receiveChannel.receive()
-			launchTraktor(msg)
+			when {
+				msg.faktorMsg != null -> launchFaktor(msg.faktorMsg)
+				msg.traktorMsg != null -> launchTraktor(msg.traktorMsg)
+			}
 		}
+	}
+
+	private fun launchFaktor(msg: F) {
+		val coroutineContext = CoroutineName("faktor") + Dispatchers.Default
+		scope.launch(coroutineContext) {
+			runFaktor(msg)
+		}.invokeOnCompletion { it?.printStackTrace() }
 	}
 
 	private fun launchTraktor(msg: TraktorMessage<M>) {
@@ -91,15 +107,6 @@ class Fleet<M, F, T : Traktor<M, *, T>>(
 	// 🟧 FAKTOR
 
 	private var faktor: Faktor<F, *> = newFaktor()
-
-	private fun runFaktorLoop() {
-		scope.launch(context) {
-			while (true) {
-				val msg = faktorChannel.receive()
-				faktor = faktor(msg) as Faktor<F, *>    // todo
-			}
-		}
-	}
 }
 
 /**
@@ -111,11 +118,10 @@ fun <M, F, T : Traktor<M, *, *>> spawnFleet(
 	newFaktor: () -> Faktor<F, *>,
 	newTraktor: (TraktorId) -> T,
 ): FleetRef<M, F> {
-	val mailbox = Channel<TraktorMessage<M>>(capacity = Channel.UNLIMITED)
-	val faktorChannel = Channel<F>(capacity = Channel.UNLIMITED)
+	val mailbox = Channel<FleetMessage<M, F>>(capacity = Channel.UNLIMITED)
 
 	scope.launch(context) {
-		Fleet(scope, context, faktorChannel, mailbox, newFaktor, newTraktor).run()
+		Fleet(scope, context, mailbox, newFaktor, newTraktor).run()
 	}
-	return FleetRef(mailbox, faktorChannel)
+	return FleetRef(mailbox)
 }
