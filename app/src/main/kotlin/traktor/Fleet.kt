@@ -6,10 +6,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import java.lang.Thread.sleep
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.CoroutineContext
+
+/**
+ * ❇️ Fleet reference for sending messages to the Fleet.
+ */
+class FleetRef<M>(
+	private val mailbox: Channel<TraktorMessage<M>>,
+) {
+	suspend infix fun tell(msg: TraktorMessage<M>) {
+		mailbox.send(msg)
+	}
+}
 
 /**
  * ❇️ Fleet is the main orchestrator of the Traktors.
@@ -23,8 +32,9 @@ class Fleet<M, T : Traktor<M, *, T>>(
 	private val newTraktor: (TraktorId) -> T,
 ) {
 
+	// Traktors that are already in memory.
+	// They might be running or not.
 	private val fleet = ConcurrentHashMap<TraktorId, T>()
-	private val todo = ConcurrentLinkedQueue<TraktorMessage<M>>()
 
 	// locks for each currently RUNNING tractor
 	private val locks = ConcurrentHashMap<TraktorId, Semaphore>()
@@ -55,35 +65,10 @@ class Fleet<M, T : Traktor<M, *, T>>(
 	 * This is where Fleet starts processing messages.
 	 */
 	suspend fun run() {
-		// it first launches the messageProcessor
-		scope.launch(context) {
-			messageProcessor()
-		}.invokeOnCompletion { it?.printStackTrace() }
 		while (true) {
 			val msg = receiveChannel.receive()
-			// all received messages are put right into a queue
-			// this queue could be persisted
-			todo.add(msg)
+			launchTraktor(msg)
 		}
-	}
-
-	private fun messageProcessor() {
-		while (true) {
-			val message = todo.poll()
-			if (message == null) {
-				sleep(100)
-				continue
-			}
-
-			launchTraktor(message)
-		}
-	}
-
-	private fun launchMessageProcessor() {
-		val coroutineContext = CoroutineName("fleet-message-processor") + Dispatchers.Default
-		scope.launch(coroutineContext) {
-			messageProcessor()
-		}.invokeOnCompletion { it?.printStackTrace() }
 	}
 
 	private fun launchTraktor(msg: TraktorMessage<M>) {
@@ -92,17 +77,6 @@ class Fleet<M, T : Traktor<M, *, T>>(
 		scope.launch(coroutineContext) {
 			runTraktor(msg)
 		}.invokeOnCompletion { it?.printStackTrace() }
-	}
-}
-
-/**
- * ❇️ Fleet reference to send messages to the Fleet.
- */
-class FleetRef<M>(
-	private val mailbox: Channel<TraktorMessage<M>>,
-) {
-	suspend infix fun tell(msg: TraktorMessage<M>) {
-		mailbox.send(msg)
 	}
 }
 
