@@ -12,11 +12,17 @@ import kotlin.coroutines.CoroutineContext
 /**
  * ❇️ Fleet reference for sending messages to the Fleet.
  */
-class FleetRef<M>(
+class FleetRef<M, F> internal constructor(
 	private val mailbox: Channel<TraktorMessage<M>>,
-) {
+	private val faktor: Channel<F>,
+){
+
 	suspend infix fun tell(msg: TraktorMessage<M>) {
 		mailbox.send(msg)
+	}
+
+	suspend infix fun tell(msg: F) {
+		faktor.send(msg)
 	}
 }
 
@@ -25,10 +31,12 @@ class FleetRef<M>(
  * It receives messages from the FleetRef and forwards them to the Traktors.
  * It also creates new Traktors when needed.
  */
-class Fleet<M, T : Traktor<M, *, T>>(
+class Fleet<M, F, T : Traktor<M, *, T>>(
 	private val scope: CoroutineScope,
 	private val context: CoroutineContext,
+	private val faktorChannel: Channel<F>,
 	private val receiveChannel: Channel<TraktorMessage<M>>,
+	newFaktor: () -> Faktor<F, *>,
 	private val newTraktor: (TraktorId) -> T,
 ) {
 
@@ -65,6 +73,7 @@ class Fleet<M, T : Traktor<M, *, T>>(
 	 * This is where Fleet starts processing messages.
 	 */
 	suspend fun run() {
+		runFaktorLoop()
 		while (true) {
 			val msg = receiveChannel.receive()
 			launchTraktor(msg)
@@ -78,20 +87,35 @@ class Fleet<M, T : Traktor<M, *, T>>(
 			runTraktor(msg)
 		}.invokeOnCompletion { it?.printStackTrace() }
 	}
+
+	// 🟧 FAKTOR
+
+	private var faktor: Faktor<F, *> = newFaktor()
+
+	private fun runFaktorLoop() {
+		scope.launch(context) {
+			while (true) {
+				val msg = faktorChannel.receive()
+				faktor = faktor(msg) as Faktor<F, *>    // todo
+			}
+		}
+	}
 }
 
 /**
  * ❇️ A Traktor factory function that creates a new Traktor with a given state.
  */
-fun <M, T : Traktor<M, *, *>> spawnFleet(
+fun <M, F, T : Traktor<M, *, *>> spawnFleet(
 	scope: CoroutineScope,
 	context: CoroutineContext,
+	newFaktor: () -> Faktor<F, *>,
 	newTraktor: (TraktorId) -> T,
-): FleetRef<M> {
+): FleetRef<M, F> {
 	val mailbox = Channel<TraktorMessage<M>>(capacity = Channel.UNLIMITED)
+	val faktorChannel = Channel<F>(capacity = Channel.UNLIMITED)
 
 	scope.launch(context) {
-		Fleet(scope, context, mailbox, newTraktor).run()
+		Fleet(scope, context, faktorChannel, mailbox, newFaktor, newTraktor).run()
 	}
-	return FleetRef(mailbox)
+	return FleetRef(mailbox, faktorChannel)
 }

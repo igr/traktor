@@ -8,7 +8,12 @@ import traktor.with
 import kotlin.random.Random
 
 suspend fun main(): Unit = coroutineScope {
-	val fleet = spawnFleet(this, coroutineContext) { newCounter(it) }
+	val fleet = spawnFleet(
+		this,
+		coroutineContext,
+		{ Counters() },
+		{ newCounter(it) }
+	)
 
 	repeat(1_000_000) {
 		val id = TraktorId(Random.nextInt(100).toString())
@@ -17,4 +22,10 @@ suspend fun main(): Unit = coroutineScope {
 
 	delay(10_000)
 	println("Database check: ${databaseCheck()}")
+
+	fleet tell Counters.ResetGreater
+	delay(1_000)
+	println("Database check: ${databaseCheck()}")
+
+
 }
