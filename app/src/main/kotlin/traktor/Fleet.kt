@@ -25,18 +25,28 @@ class Fleet<M, T : Traktor<M, *, T>>(
 
 	private val fleet = ConcurrentHashMap<TraktorId, T>()
 	private val todo = ConcurrentLinkedQueue<TraktorMessage<M>>()
-	private val locks = ConcurrentHashMap<TraktorId, Semaphore>()   // todo put together with fleet
+
+	// locks for each currently RUNNING tractor
+	private val locks = ConcurrentHashMap<TraktorId, Semaphore>()
+	private val fleetLock = Semaphore(1)
 
 	private suspend fun runTraktor(msg: TraktorMessage<M>) {
 		val id = msg.id
 		val cmd = msg.msg
+
+		// we need to atomically acquire the lock for the Traktor
+		// using a concurrent hash map is not enough
+		fleetLock.acquire()
 		val semaphore = locks.computeIfAbsent(id) { Semaphore(1) }
 		semaphore.acquire()
+		fleetLock.release()
+
 		try {
 			val traktor = fleet.computeIfAbsent(id) { newTraktor(id) }
 			val newTraktor = traktor(cmd)
 			fleet[id] = newTraktor
 		} finally {
+			locks.remove(id)
 			semaphore.release()
 		}
 	}
@@ -46,7 +56,9 @@ class Fleet<M, T : Traktor<M, *, T>>(
 	 */
 	suspend fun run() {
 		// it first launches the messageProcessor
-		launchMessageProcessor()
+		scope.launch(context) {
+			messageProcessor()
+		}.invokeOnCompletion { it?.printStackTrace() }
 		while (true) {
 			val msg = receiveChannel.receive()
 			// all received messages are put right into a queue
@@ -64,16 +76,6 @@ class Fleet<M, T : Traktor<M, *, T>>(
 			}
 
 			launchTraktor(message)
-
-//			when (cmd) {
-//				is Message.Query -> {
-//					launchTraktor(traktorId, cmd)
-//				}
-//				is Message.Command -> {
-//					fleet.clear()
-//					launchTraktor(traktorId, cmd)
-//				}
-//			}
 		}
 	}
 

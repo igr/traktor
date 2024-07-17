@@ -11,7 +11,7 @@ suspend fun main(): Unit = coroutineScope {
 	val fleet = spawnFleet(this, coroutineContext) { newCounter(it) }
 
 	repeat(1_000_000) {
-		val id = TraktorId(Random.nextInt(10).toString())
+		val id = TraktorId(Random.nextInt(100).toString())
 		fleet tell (id with Counter.Inc(1))
 	}
 
