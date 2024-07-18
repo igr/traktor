@@ -2,12 +2,12 @@ package example
 
 import traktor.Faktor
 import traktor.Mutable
-import traktor.TraktorId
+import traktor.TraktorAddress
 
 // simulate a database
 // VERY IMPORTANT: this map is not a ConcurrentHashMap!
 // The engine is designed to be thread-safe, so we don't need to worry about it!
-internal val database = mutableMapOf<TraktorId, Int>()
+internal val database = mutableMapOf<TraktorAddress, Int>()
 
 /**
  * Simply sums all the values in the database to verify that
@@ -19,17 +19,17 @@ fun databaseCheck(): Int {
 
 class Counters(
 	// messages
-) : Faktor<Counters.Message, Counters> {
+) : Faktor<Counters.Message> {
 	sealed interface Message
-	data object ResetGreater : Message, Mutable
+	data object Reset : Message, Mutable
 	data object Checksum : Message
 
 	override operator fun invoke(msg: Message): Counters {
 		return when (msg) {
-			is ResetGreater -> {
+			is Reset -> {
 				database.entries
 					.filter { it.value > 50 }
-					.forEach { (id, _) -> database[id] = 0 }
+					.forEach { (addr, _) -> database[addr] = 0 }
 				this
 			}
 			is Checksum -> {

@@ -1,7 +1,7 @@
 package traktor
 
 @JvmInline
-value class TraktorId(val value: String)
+value class TraktorAddress(val value: String)
 
 /**
  * ❇️ This is a Traktor, a state machine node that can receive messages and
@@ -10,23 +10,14 @@ value class TraktorId(val value: String)
  * <li> S: the actual state value (e.g., a data class)
  * <li> Traktor: the state node in the state machine
  */
-interface Traktor<M, S, T: Traktor<M, S, T>> {
-	val id: TraktorId   // unique identifier of a state
-	val value: S        // actual state value
+interface Traktor<M> {
+	val address: TraktorAddress   // unique data state address
 
 	/**
 	 * This method is called when a message is received.
 	 */
-	operator fun invoke(msg: M): T
+	operator fun invoke(msg: M): Traktor<M>
 }
 
-/**
- * Message for specific Traktor.
- */
-data class TraktorMessage<M>(
-	val id: TraktorId,
-	val msg: M,
-)
 
-infix fun <M> TraktorId.with(message: M): TraktorMessage<M> = TraktorMessage(this, message)
-
+// todo add delegate/wrapper over traktor for additional control

@@ -1,9 +1,9 @@
 package traktor
 
-interface Faktor<F, T: Faktor<F, T>> {
+interface Faktor<F> {
 
 	/**
-	 * This method is called when a message is received.
+	 * Faktor behavior.
 	 */
-	operator fun invoke(msg: F): T
+	operator fun invoke(msg: F): Faktor<F>
 }
