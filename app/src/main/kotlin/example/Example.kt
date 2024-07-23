@@ -8,10 +8,10 @@ import traktor.spawnFleet
 import kotlin.random.Random
 
 // USE ASK TO WAIT FOR ANSWERS or just DELAY until all traktors are done
-const val useAsk = true
+const val USE_ASK = false
 
 suspend fun main(): Unit = coroutineScope {
-	println("USE ASK = $useAsk")
+	println("USE ASK = $USE_ASK")
 
 	val fleet = spawnFleet(
 		"counters",
@@ -21,7 +21,9 @@ suspend fun main(): Unit = coroutineScope {
 		{ newCounter(it) }
 	)
 
-	if (useAsk == false) {
+	delay(100)
+
+	if (USE_ASK == false) {
 		val now = System.currentTimeMillis()
 		repeat(1_000_000) {
 			val address = TraktorAddress(Random.nextInt(100).toString())
@@ -30,7 +32,10 @@ suspend fun main(): Unit = coroutineScope {
 
 		println("All traktors told in ${System.currentTimeMillis() - now} ms")       // usually < 500ms
 
-		delay(10_000)
+		repeat(10) {
+			delay(1_000)
+			fleet shout Counters.Checksum
+		}
 
 		println("10 seconds passed")
 
